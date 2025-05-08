@@ -1,0 +1,15 @@
+[Unit]
+Description=AlienScraper Flask Web App
+After=network.target alienscraper-worker.service
+
+[Service]
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__WORKING_DIR__
+Environment="GOOGLE_API_KEY=__GOOGLE_API_KEY__"
+ExecStart=__PYTHON_EXEC__ __WORKING_DIR__/app/app.py
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

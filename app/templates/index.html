@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlienScraper Control - {{ app_version }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Ajout d'un style interne pour des ajustements spécifiques -->
+    <style>
+        .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .status-item, .cookie-item { backdrop-filter: blur(5px);background-color: rgba(255, 255, 255, 0.2); padding: 15px; border-radius: 5px; border: 1px solid #eee; }
+        .status-item strong, .cookie-item strong { display: block; margin-bottom: 5px; }
+        .cookie-actions { margin-top: 10px; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .file-item:last-child { border-bottom: none; }
+        .file-actions form { margin-left: 10px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { margin-bottom: 8px; }
+        .current-task-section { background-color: rgba(240, 240, 240, 0.1); padding: 20px; border-radius: 5px; margin-bottom: 20px; border: 1px solid rgba(224, 224, 224, 0.2);}
+        .checkbox-group label { display: inline-block !important; margin-left: 5px; font-weight: normal;}
+        hr { border: 0; height: 1px; background-color: rgba(221, 221, 221, 0.2); margin: 30px 0; }
+        small { font-size: 0.8em; color: rgba(241, 240, 240, 0.725); }
+        /* Layout en deux colonnes pour le haut */
+        .top-layout { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; }
+        .top-layout > section { flex: 1; min-width: 300px; }
+        .file-group { margin-bottom: 20px; }
+        .file-group h3 { margin-bottom: 10px; }
+        .file-item a { text-decoration: none; color: var(--primary-color); } /* Style pour les liens de téléchargement */
+        .file-item a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AlienScraper© <small>({{ app_version }})</small></h1>
+
+        <!-- Affichage des messages Flash -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-messages">
+            {% for category, message in messages %}
+              <li class="flash-{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <div class="top-layout"> <!-- Premier groupe : Statut et Fichiers -->
+            <!-- Section Statut et Cookies -->
+            <section class="status-section">
+                <h2><i class="fas fa-cogs"></i> Statut et Configuration</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <strong><i class="fas fa-database"></i> Statut Redis</strong>
+                        <span><i class="fas {{ 'fa-check-circle' if redis_status == 'Connecté' else 'fa-exclamation-triangle' }}" style="color:  'green' if redis_status = 'Connecté' else 'orange' ;"></i> {{ redis_status }}</span>
+                    </div>
+                    <div class="cookie-item">
+                        <strong><i class="fab fa-facebook"></i> Cookies Facebook</strong>
+                        <span class="cookie-status {{ 'cookie-ok' if fb_cookie_exists else 'cookie-missing' }}">
+                            <i class="fas {{ 'fa-check-circle' if fb_cookie_exists else 'fa-times-circle' }}" style="color:  'green' if fb_cookie_exists else 'red' ;"></i>
+                            {{ 'Présents' if fb_cookie_exists else 'Manquants' }}
+                        </span>
+                        {% if fb_cookie_exists %}
+                        <div class="cookie-actions">
+                            <form method="POST" action="{{ url_for('manage_cookies') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer les cookies Facebook ?');">
+                                <input type="hidden" name="target" value="facebook">
+                                <button type="submit" class="delete-button" aria-label="Supprimer les cookies Facebook"><i class="fas fa-trash-alt"></i> Supprimer</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                     <div class="cookie-item">
+                        <strong><i class="fab fa-instagram"></i> Cookies Instagram</strong>
+                        <span class="cookie-status {{ 'cookie-ok' if ig_cookie_exists else 'cookie-missing' }}">
+                            {{ 'Présents' if ig_cookie_exists else 'Manquants' }}
+                        </span>
+                        {% if ig_cookie_exists %}
+                        <div class="cookie-actions">
+                            <form method="POST" action="{{ url_for('manage_cookies') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer les cookies Instagram ?');">
+                                <input type="hidden" name="target" value="instagram">
+                                <button type="submit" class="delete-button" aria-label="Supprimer les cookies Instagram"><i class="fas fa-trash-alt"></i> Supprimer</button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                 <!-- Formulaire d'Upload -->
+                 <div class="cookie-item" style="grid-column: 1 / -1; margin-top:15px;"> <!-- Prend toute la largeur de son parent grid -->
+                     <form method="POST" action="{{ url_for('upload_cookies') }}" enctype="multipart/form-data">
+                         <label for="cookie_file"><strong><i class="fas fa-upload"></i> Importer un fichier de cookies (.json) :</strong></label>
+                         <input type="file" id="cookie_file" name="cookie_file" accept=".json" required style="display: block; margin-bottom: 10px;">
+                         <button type="submit" style="margin-top: 0; padding: 8px 15px; font-size: 14px;"><i class="fas fa-file-import"></i> Importer</button>
+                         <p style="font-size: 0.9em; color: #555; margin-top: 10px; margin-bottom: 0;">
+                            Sélectionnez votre fichier <code>facebook_cookies.json</code> ou <code>instagram_cookies.json</code> (obtenu via une extension navigateur comme 'Cookie-Editor'). Le fichier sera sauvegardé dans <code>/home/AlienScraper/</code>.
+                         </p>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Section Gestion des Fichiers (déplacée ici) -->
+            <section class="file-list">
+                <h2><i class="fas fa-folder-open"></i> Gestion des Fichiers</h2>
+
+                <!-- Fichier Leads -->
+                <div class="file-group">
+                    <h3><i class="fas fa-file-csv"></i> Fichier Leads Principal</h3>
+                    <ul>
+                        {% if result_files.leads %}
+                        <li class="file-item">
+                            <a href="{{ url_for('download_file', filename=result_files.leads.name) }}" download aria-label="Télécharger {{ result_files.leads.name }}">
+                                <i class="fas fa-download"></i> {{ result_files.leads.name }}
+                            </a>
+                            <div class="file-actions">
+                                <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer {{ result_files.leads.name }} ?');">
+                                    <input type="hidden" name="target" value="leads">
+                                    <button type="submit" class="delete-button" aria-label="Supprimer {{ result_files.leads.name }}"><i class="fas fa-trash-alt"></i> Supprimer</button>
+                                </form>
+                            </div>
+                        </li>
+                        {% else %}
+                        <li>Aucun fichier leads.csv trouvé.</li>
+                        {% endif %}
+                    </ul>
+                </div>
+
+                <!-- Fichiers Listes -->
+                <div class="file-group">
+                    <h3><i class="fas fa-list-alt"></i> Listes Extraites (/listes)</h3>
+                    {% if result_files.lists %}
+                        <ul>
+                            {% for file in result_files.lists %}
+                            <li class="file-item">
+                                <a href="{{ url_for('download_file', filename=file.name) }}" download aria-label="Télécharger {{ file.name }}">
+                                    <i class="fas fa-download"></i> {{ file.name }}
+                                </a>
+                                <!-- On pourrait ajouter un bouton supprimer par fichier ici si besoin -->
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        <div style="margin-top: 15px;">
+                            <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer TOUT le contenu du dossier /listes ?');">
+                                <input type="hidden" name="target" value="lists">
+                                <button type="submit" class="delete-button" aria-label="Supprimer toutes les listes extraites"><i class="fas fa-trash-alt"></i> Supprimer Toutes les Listes</button>
+                            </form>
+                        </div>
+                    {% else %}
+                        <p>Aucun fichier trouvé dans /listes.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Dossiers Résultats Bruts -->
+                <div class="file-group">
+                    <h3><i class="fas fa-archive"></i> Dossiers Résultats Bruts (/Scraping_Results_*)</h3>
+                     {% if result_files.results_dirs %}
+                        <div style="margin-bottom: 15px;">
+                             <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer TOUS les dossiers de résultats bruts ?');">
+                                <input type="hidden" name="target" value="all_results">
+                                <button type="submit" class="delete-button" aria-label="Supprimer tous les dossiers de résultats bruts"><i class="fas fa-trash-alt"></i> Supprimer Tous les Résultats</button>
+                            </form>
+                        </div>
+                        <ul>
+                            {% for dir in result_files.results_dirs %}
+                            <li class="file-item">
+                                <span><i class="fas fa-folder"></i> {{ dir.name }}</span>
+                                 <div class="file-actions">
+                                    <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer le dossier {{ dir.name }} ?');">
+                                        <input type="hidden" name="target" value="specific_result_dir">
+                                        <input type="hidden" name="path" value="{{ dir }}">
+                                        <button type="submit" class="delete-button" aria-label="Supprimer le dossier {{ dir.name }}"><i class="fas fa-trash-alt"></i> Supprimer</button>
+                                    </form>
+                                </div>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p>Aucun dossier de résultats bruts trouvé.</p>
+                    {% endif %}
+                </div>
+            </section>
+        </div> <!-- Fin premier groupe -->
+
+        <hr>
+
+        <div class="top-layout"> <!-- Deuxième groupe : Lancer Scraping et Tâche en cours -->
+            <!-- Section Lancer Scraping (maintenant ici) -->
+            <section class="scraping-form-section">
+                <h2><i class="fas fa-rocket"></i> Lancer un nouveau scraping</h2>
+                <form method="POST" action="/scrape" id="scrapeForm">
+                    <div class="form-group">
+                        <label for="kw1">Quoi (ex: restaurant, café) :</label>
+                        <input type="text" id="kw1" name="kw1" placeholder="restaurant, café">
+                    </div>
+                    <div class="form-group">
+                        <label for="kw2">Où (ex: Rabat, Casablanca) :</label>
+                        <input type="text" id="kw2" name="kw2" placeholder="Rabat">
+                    </div>
+                    <div class="form-group">
+                        <label for="kw3">Mots-clés additionnels (ex: bio, livraison) :</label>
+                        <input type="text" id="kw3" name="kw3" placeholder="bio">
+                    </div>
+                    <div class="form-group">
+                        <label for="limit">Limite de pages Google :</label>
+                        <input type="number" id="limit" name="limit" value="2" min="1" style="width: 100px;"> <!-- Largeur réduite -->
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="clean" name="clean" value="yes" checked>
+                        <label for="clean">Exécuter Clean/Consolidation après</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="extract" name="extract" value="yes" checked>
+                        <label for="extract">Exécuter Extraction Listes après</label>
+                    </div>
+
+                    <button type="submit" id="submitScrapeButton"><i class="fas fa-play"></i> Lancer le Scraping</button>
+                </form>
+            </section>
+
+            <!-- Section Tâche en Cours (Progression, Logs, Arrêt) (maintenant ici) -->
+            <section id="current-task-section" class="current-task-section" style="display: none; min-height: 300px;"> <!-- Sera affiché par JS si une tâche est active, ajout min-height -->
+                <h2><i class="fas fa-tasks"></i> Tâche en cours</h2>
+                <div id="progress-container">
+                    <progress id="progressBar" value="0" max="100" style="width: 100%; height: 25px;"></progress>
+                    <div id="progressStatus" style="margin-top: 5px; font-weight: bold;">En attente...</div>
+                </div>
+                <form id="cancelJobForm" method="POST" action="" style="margin-top: 10px; display: none;"> <!-- Masqué par défaut -->
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}"> <!-- Pour CSRF si activé -->
+                    <button type="submit" id="cancelJobButton" class="delete-button"><i class="fas fa-stop-circle"></i> Arrêter la tâche</button>
+                </form>
+
+                <div class="log-output-container" style="margin-top: 15px;">
+                    <h3><i class="fas fa-stream"></i> Messages de la tâche :</h3>
+                    <pre id="logOutput" style="background-color: rgba(255,255,255,0.8); color: #333; border: 1px solid #ccc; padding: 10px; border-radius: 3px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;"></pre>
+                </div>
+            </section>
+        </div> <!-- Fin deuxième groupe -->
+    </div> <!-- Fin container principal -->
+
+    <script>
+        // --- Script pour la barre de progression ---
+        const lastJobId = "{{ last_job_id or '' }}"; // Récupère l'ID de la tâche depuis la session Flask
+        const currentTaskSection = document.getElementById('current-task-section');
+        const cancelJobForm = document.getElementById('cancelJobForm');
+        const cancelJobButton = document.getElementById('cancelJobButton');
+        const submitScrapeButton = document.getElementById('submitScrapeButton');
+
+        if (lastJobId) {
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progressBar');
+            const progressStatus = document.getElementById('progressStatus');
+            // progressContainer.style.display = 'block'; // Géré par currentTaskSection
+
+            if (cancelJobForm) {
+                cancelJobForm.action = `/cancel-job/${lastJobId}`; // Définit l'action du formulaire
+                cancelJobForm.style.display = 'block'; // Affiche le formulaire d'annulation
+                if (submitScrapeButton) submitScrapeButton.disabled = true; // Désactiver le bouton de lancement
+            }
+
+            const intervalId = setInterval(() => {
+                if (!document.getElementById('progressBar')) { clearInterval(intervalId); return; } // Si l'élément a disparu
+                fetch(`/job-status/${lastJobId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const progressPercent = data.progress || 0;
+                        progressBar.value = data.progress || 0;
+                        progressStatus.textContent = data.status_message || data.status || 'Chargement...';
+
+                        // Afficher les messages dans la zone de log
+                        const logOutput = document.getElementById('logOutput');
+                        if (logOutput) {
+                            let logMessage = data.status_message || '';
+                            if (data.error) {
+                                logMessage += `\nERREUR: ${data.error}`;
+                            }
+                            logOutput.textContent = logMessage || 'Aucun message de statut pour le moment.';
+                        }
+
+                        // Arrêter l'intervalle si la tâche est terminée ou a échoué
+                        const terminalStates = ['finished', 'failed', 'canceled', 'stopped', 'expired_or_unknown', 'not_found'];
+                        if (terminalStates.includes(data.status) || data.error) {
+                            progressStatus.textContent = `${data.status_message || data.status} (${progressPercent}%) - Terminé/Échec`;
+                            clearInterval(intervalId);
+                            if (cancelJobButton) cancelJobButton.disabled = true; // Désactiver le bouton d'arrêt
+                            if (submitScrapeButton) submitScrapeButton.disabled = false; // Réactiver le bouton de lancement
+                        } else {
+                            progressStatus.textContent = `${data.status_message || data.status} (${progressPercent}%)`;
+                            if (cancelJobButton) cancelJobButton.disabled = false; // Activer/Réactiver le bouton
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur lors de la récupération du statut:', error);
+                        progressStatus.textContent = 'Erreur de communication avec le serveur.';
+                        clearInterval(intervalId); // Arrêter en cas d'erreur réseau
+                        if (cancelJobButton) cancelJobButton.disabled = true;
+                        if (submitScrapeButton) submitScrapeButton.disabled = false; // Réactiver en cas d'erreur aussi
+                    });
+            }, 3000); // Interroger toutes les 3 secondes
+            
+            // Afficher la section de la tâche en cours
+            if (currentTaskSection) currentTaskSection.style.display = 'block';
+        } else {
+            if (submitScrapeButton) submitScrapeButton.disabled = false; // S'assurer que le bouton est actif si pas de tâche
+        }
+    </script>
+
+</body>
+</html>
+<!-- Fin du fichier index.html -->

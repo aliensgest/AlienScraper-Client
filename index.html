@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlienScraper Control - {{ app_version }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>AlienScraper© <small>({{ app_version }})</small></h1>
+
+        <!-- Section Informations -->
+        <div class="info-section">
+            <span>Statut Redis: <strong>{{ redis_status }}</strong></span> |
+            <span>Cookies Facebook: <strong class="cookie-status {{ 'cookie-ok' if fb_cookie_exists else 'cookie-missing' }}">{{ 'Présents' if fb_cookie_exists else 'Manquants' }}</strong></span> |
+            <span>Cookies Instagram: <strong class="cookie-status {{ 'cookie-ok' if ig_cookie_exists else 'cookie-missing' }}">{{ 'Présents' if ig_cookie_exists else 'Manquants' }}</strong></span>
+        </div>
+
+        <!-- Affichage des messages Flash -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-messages">
+            {% for category, message in messages %}
+              <li class="flash-{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <!-- Barre de progression -->
+        <div id="progress-container" style="display: none;">
+            <h2>Progression de la tâche</h2>
+            <progress id="progressBar" value="0" max="100"></progress>
+            <div id="progressStatus">En attente...</div>
+        </div>
+
+
+        <h2>Lancer un nouveau scraping</h2>
+        <form method="POST" action="/scrape">
+            <label for="kw1">Quoi (ex: restaurant, café) :</label>
+            <input type="text" id="kw1" name="kw1" placeholder="restaurant, café">
+
+            <label for="kw2">Où (ex: Rabat, Casablanca) :</label>
+            <input type="text" id="kw2" name="kw2" placeholder="Rabat">
+
+            <label for="kw3">Mots-clés additionnels (ex: bio, livraison) :</label>
+            <input type="text" id="kw3" name="kw3" placeholder="bio">
+
+            <label for="limit">Limite de pages Google :</label>
+            <input type="number" id="limit" name="limit" value="2" min="1">
+
+            <div>
+                <input type="checkbox" id="clean" name="clean" value="yes" checked>
+                <label for="clean" style="display: inline;">Exécuter Clean/Consolidation après</label>
+            </div>
+            <div>
+                <input type="checkbox" id="extract" name="extract" value="yes" checked>
+                <label for="extract" style="display: inline;">Exécuter Extraction Listes après</label>
+            </div>
+
+            <button type="submit">Lancer le Scraping</button>
+        </form>
+    </div>
+
+    <!-- Section Gestion des Fichiers -->
+    <div class="container file-list">
+        <h2>Gestion des Fichiers</h2>
+
+        <!-- Fichier Leads -->
+        <h3>Fichier Leads Principal</h3>
+        <ul>
+            {% if result_files.leads %}
+            <li>
+                <span>{{ result_files.leads.name }}</span>
+                <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer {{ result_files.leads.name }} ?');">
+                    <input type="hidden" name="target" value="leads">
+                    <button type="submit" class="delete-button">Supprimer</button>
+                </form>
+            </li>
+            {% else %}
+            <li>Aucun fichier leads.csv trouvé.</li>
+            {% endif %}
+        </ul>
+
+        <!-- Fichiers Listes -->
+        <h3>Listes Extraites (/listes)</h3>
+        <ul>
+            {% if result_files.lists %}
+                {% for file in result_files.lists %}
+                <li>
+                    <span>{{ file.name }}</span>
+                    <!-- Ajouter lien téléchargement si besoin -->
+                </li>
+                {% endfor %}
+                <li>
+                    <span>&nbsp;</span> <!-- Pour aligner le bouton -->
+                    <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer TOUT le contenu du dossier /listes ?');">
+                        <input type="hidden" name="target" value="lists">
+                        <button type="submit" class="delete-button">Supprimer Toutes les Listes</button>
+                    </form>
+                </li>
+            {% else %}
+                <li>Aucun fichier trouvé dans /listes.</li>
+            {% endif %}
+        </ul>
+
+        <!-- Dossiers Résultats Bruts -->
+        <h3>Dossiers Résultats Bruts (/Scraping_Results_*)</h3>
+        <ul>
+            {% if result_files.results_dirs %}
+                 <li>
+                    <span>&nbsp;</span> <!-- Pour aligner le bouton -->
+                    <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer TOUS les dossiers de résultats bruts ?');">
+                        <input type="hidden" name="target" value="all_results">
+                        <button type="submit" class="delete-button">Supprimer Tous les Résultats</button>
+                    </form>
+                </li>
+                {% for dir in result_files.results_dirs %}
+                <li>
+                    <span>{{ dir.name }}</span>
+                    <form method="POST" action="{{ url_for('delete_data') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer le dossier {{ dir.name }} ?');">
+                        <input type="hidden" name="target" value="specific_result_dir">
+                        <input type="hidden" name="path" value="{{ dir }}">
+                        <button type="submit" class="delete-button">Supprimer</button>
+                    </form>
+                </li>
+                {% endfor %}
+            {% else %}
+                <li>Aucun dossier de résultats bruts trouvé.</li>
+            {% endif %}
+        </ul>
+    </div>
+
+    <script>
+        // --- Script pour la barre de progression ---
+        // TODO: Récupérer le last_job_id (peut-être via une variable passée au template ou stockée après soumission)
+        // Exemple: Si on stocke l'ID dans la session Flask et qu'on le passe au template:
+        // const lastJobId = "{{ session.get('last_job_id') }}";
+        const lastJobId = null; // Remplacer par la logique pour obtenir l'ID
+
+        if (lastJobId) {
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progressBar');
+            const progressStatus = document.getElementById('progressStatus');
+            progressContainer.style.display = 'block';
+
+            const intervalId = setInterval(() => {
+                fetch(`/job-status/${lastJobId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        progressBar.value = data.progress || 0;
+                        progressStatus.textContent = data.status_message || data.status || 'Chargement...';
+
+                        // Arrêter l'intervalle si la tâche est terminée ou a échoué
+                        if (data.status === 'finished' || data.status === 'failed' || data.error) {
+                            clearInterval(intervalId);
+                            progressStatus.textContent += (data.status === 'finished' ? ' (Terminé)' : ' (Échec)');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erreur lors de la récupération du statut:', error);
+                        progressStatus.textContent = 'Erreur de communication avec le serveur.';
+                        clearInterval(intervalId); // Arrêter en cas d'erreur réseau
+                    });
+            }, 3000); // Interroger toutes les 3 secondes
+        }
+    </script>
+
+</body>
+</html>

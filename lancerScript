@@ -1,0 +1,5 @@
+export GOOGLE_API_KEY="TA_CLE_API_ICI"
+# Lancer le worker dans un terminal (avec xvfb-run si besoin)
+xvfb-run python /home/AlienScraper/worker.py &
+# Lancer l'app Flask dans un autre terminal
+python /home/AlienScraper/app/app.py

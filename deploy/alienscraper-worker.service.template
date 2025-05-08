@@ -1,0 +1,15 @@
+[Unit]
+Description=AlienScraper RQ Worker with Xvfb
+After=network.target redis-server.service
+
+[Service]
+User=__USER__
+Group=__GROUP__
+WorkingDirectory=__WORKING_DIR__
+Environment="GOOGLE_API_KEY=__GOOGLE_API_KEY__"
+ExecStart=__XVFB_RUN_EXEC__ __PYTHON_EXEC__ __WORKING_DIR__/worker.py
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

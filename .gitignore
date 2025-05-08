@@ -1,0 +1,33 @@
+# Fichiers de configuration spécifiques à l'environnement local (si applicable)
+*.local
+
+# Cookies
+facebook_cookies.json
+instagram_cookies.json
+
+# Dossier de l'environnement virtuel Python
+.venv/
+venv/
+ENV/
+
+# Fichiers Python compilés et caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Fichiers CSV générés (sauf si tu veux en inclure un comme exemple)
+# Si leads.csv est toujours généré et ne doit pas être versionné :
+leads.csv
+
+# Dossier des listes extraites
+listes/
+
+# Dossiers de résultats bruts de scraping
+Scraping_Results_*/
+
+# Fichiers de log spécifiques (si tu en as)
+*.log
+
+# Fichiers IDE (VSCode, PyCharm, etc.)
+.vscode/
+.idea/
