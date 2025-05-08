@@ -58,6 +58,21 @@ echo " - Utilisateur des services : $PROJECT_USER"
 echo " - Groupe des services : $PROJECT_GROUP"
 echo " - Exécutable xvfb-run : $XVFB_RUN_EXEC"
 
+# --- Création du dossier screenshots et configuration des permissions ---
+echo ""
+echo "Configuration du dossier screenshots..."
+PROJECT_DIR_SETUP="$SCRIPT_DIR" # Utiliser SCRIPT_DIR comme base pour le dossier du projet
+
+# Utiliser PROJECT_USER et PROJECT_GROUP déjà définis
+mkdir -p "${PROJECT_DIR_SETUP}/screenshots"
+if [ $? -ne 0 ]; then
+    echo "ERREUR: Échec de la création du dossier ${PROJECT_DIR_SETUP}/screenshots."
+    # exit 1 # Optionnel: sortir si la création échoue
+fi
+chown "${PROJECT_USER}:${PROJECT_GROUP}" "${PROJECT_DIR_SETUP}/screenshots"
+chmod 775 "${PROJECT_DIR_SETUP}/screenshots"
+echo "Dossier screenshots configuré dans ${PROJECT_DIR_SETUP}/screenshots."
+
 # Vérifier si xvfb-run a été trouvé
 if [ -z "$XVFB_RUN_EXEC" ]; then
     echo "ERREUR: xvfb-run n'a pas été trouvé. Assurez-vous qu'il est installé (sudo apt install xvfb)."
@@ -158,6 +173,31 @@ create_service_file() {
     echo "  Fichier $target_file créé."
 }
 
+# Fonction pour configurer sudoers
+configure_sudoers() {
+    local user_to_grant=$1
+    local sudoers_file_path="/etc/sudoers.d/90-alienscraper-web" # Nom de fichier descriptif
+
+    echo ""
+    echo "Configuration des permissions sudo pour l'utilisateur '$user_to_grant'..."
+
+    # Contenu du fichier sudoers
+    local sudoers_content="$user_to_grant ALL=(ALL) NOPASSWD: /bin/systemctl restart alienscraper-app.service, /bin/systemctl restart alienscraper-worker.service"
+
+    # Créer le fichier avec le contenu
+    echo "$sudoers_content" > "$sudoers_file_path"
+    if [ $? -ne 0 ]; then
+        echo "ERREUR: Échec de la création du fichier sudoers à $sudoers_file_path."
+        echo "Veuillez vérifier les permissions ou créer le fichier manuellement."
+        return 1 # Indiquer un échec
+    fi
+
+    # Définir les permissions correctes pour le fichier sudoers
+    chmod 0440 "$sudoers_file_path"
+    echo "Fichier sudoers créé et configuré à $sudoers_file_path."
+    echo "L'utilisateur '$user_to_grant' peut maintenant redémarrer les services sans mot de passe."
+}
+
 create_service_file "$TEMPLATE_WORKER" "$TARGET_WORKER"
 create_service_file "$TEMPLATE_APP" "$TARGET_APP"
 
@@ -169,6 +209,13 @@ systemctl enable alienscraper-app.service
 echo "Démarrage des services..."
 systemctl start alienscraper-worker.service
 systemctl start alienscraper-app.service
+
+# --- Configuration sudoers pour le redémarrage des services ---
+# Appeler la fonction avec l'utilisateur PROJECT_USER
+configure_sudoers "$PROJECT_USER"
+if [ $? -ne 0 ]; then
+    echo "AVERTISSEMENT: La configuration sudoers a échoué. Le bouton de redémarrage dans l'interface web pourrait ne pas fonctionner."
+fi
 
 echo "Installation et configuration terminées."
 echo "Vous pouvez maintenant accéder à l'application via http://localhost:5000"

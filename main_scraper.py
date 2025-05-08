@@ -8,7 +8,7 @@ import csv
 import threading
 import traceback
 from datetime import datetime
-from itertools import product
+from itertools import product # Garder cet import
 from pathlib import Path # Importer Path
 from urllib.parse import urlparse, urlunparse, parse_qs
 import re # Import regex for phone number cleaning
@@ -101,6 +101,20 @@ skip_url = False                # Passer à l'URL suivante (u)
 
 # --- Regex for cleaning phone numbers ---
 CLEAN_PHONE_REGEX = re.compile(r'[\s().\-+📲📞☎️]') # Use the same regex as in scrapers
+
+# --- Configuration pour les screenshots de débogage ---
+# S'assurer que config.SCREENSHOTS_DIR est défini. Sinon, fallback.
+if hasattr(config, 'BASE_DIR'): # S'assurer que config.BASE_DIR est disponible
+    SCREENSHOTS_DIR = config.BASE_DIR / "screenshots"
+else: # Fallback si config.BASE_DIR n'est pas défini (ne devrait pas arriver)
+    SCREENSHOTS_DIR = Path(__file__).resolve().parent / "screenshots"
+    print(f"AVERTISSEMENT: config.BASE_DIR non trouvé, SCREENSHOTS_DIR défini à {SCREENSHOTS_DIR}")
+
+try:
+    SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as e_mkdir:
+    print(f"ERREUR: Impossible de créer le dossier de screenshots {SCREENSHOTS_DIR}: {e_mkdir}")
+
 
 # --- Function for Moroccan Phone Reformatting ---
 def format_phone_to_whatsapp_link(phone_number):
@@ -237,6 +251,44 @@ def generate_keyword_combinations(keywords_lists):
     # Filter out any combinations that result in empty strings or only whitespace after joining
     valid_combinations = [combo for combo in combinations if combo]
     return valid_combinations
+
+
+# --- Fonction utilitaire pour sauvegarder les infos de débogage ---
+def save_debug_info(driver, error_type, context_name="general"):
+    """Sauvegarde un screenshot et le code source de la page en cas d'erreur."""
+    if not driver:
+        print("    [Debug Save] Driver non disponible, impossible de sauvegarder les infos de débogage.")
+        return
+
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Nettoyer context_name pour l'utiliser dans un nom de fichier
+        safe_context = re.sub(r'[^\w\-_\. ]', '_', str(context_name))[:50] # Limiter la longueur
+        
+        screenshot_filename = f"{timestamp}_{error_type}_{safe_context}.png"
+        html_filename = f"{timestamp}_{error_type}_{safe_context}.html"
+        
+        # Utiliser SCREENSHOTS_DIR défini globalement
+        screenshot_path = SCREENSHOTS_DIR / screenshot_filename
+        html_path = SCREENSHOTS_DIR / html_filename
+
+        current_url_debug = "unknown_url"
+        try:
+            current_url_debug = driver.current_url
+            driver.save_screenshot(str(screenshot_path))
+            print(f"    [Debug Save] Screenshot sauvegardé : {screenshot_path}")
+        except Exception as e_ss:
+            print(f"    [Debug Save] Erreur lors de la sauvegarde du screenshot : {e_ss}")
+
+        try:
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            print(f"    [Debug Save] Code source HTML sauvegardé : {html_path}")
+        except Exception as e_html:
+            print(f"    [Debug Save] Erreur lors de la sauvegarde du code HTML : {e_html}")
+        print(f"    [Debug Save] URL actuelle lors de l'erreur: {current_url_debug}")
+    except Exception as e_debug:
+        print(f"    [Debug Save] Erreur majeure dans save_debug_info : {e_debug}")
 
 # --- Interface utilisateur pour les mots-clés (pour mode autonome) ---
 def get_keywords_input_main():
@@ -512,6 +564,8 @@ def extract_info_with_ai(driver, url, model, source_info):
     except WebDriverException as e_nav:
         print(f"    [AI Extract] Erreur WebDriver lors de la navigation ou de l'extraction de contenu pour {url}: {e_nav}")
         error_message = f"WebDriver error accessing page: {type(e_nav).__name__}"
+        if driver: # 'driver' est passé à extract_info_with_ai
+            save_debug_info(driver, f"AI_WebDriver_{type(e_nav).__name__}", url)
         status = "Error - AI Page Load Failed"
     except Exception as e_ai_call:
         print(f"    [AI Extract] Erreur lors de l'appel à l'API Gemini pour {url}: {e_ai_call}")
@@ -519,6 +573,8 @@ def extract_info_with_ai(driver, url, model, source_info):
              error_message = "AI content blocked (safety filters)."
              status = "Error - AI Content Blocked"
         else:
+             if driver: # 'driver' est passé à extract_info_with_ai
+                 save_debug_info(driver, f"AI_API_{type(e_ai_call).__name__}", url)
              error_message = f"Error calling AI API: {type(e_ai_call).__name__}"
              status = "Error - AI API Call Failed"
 
@@ -588,22 +644,37 @@ def run_full_scraping_process(keywords_input_lists, google_pages_limit=5, google
     try:
         # Spécifier explicitement le chemin de l'exécutable Chromium pour Linux
         options = uc.ChromeOptions()
-        # ENLEVER l'option headless pour essayer avec Xvfb
-        # options.add_argument('--headless=new')
+        
+        # Options recommandées pour les environnements headless/VM/XVFB
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu') # Important pour XVFB
+        options.add_argument('--window-size=1920,1080') # Peut aider au rendu
+        # options.add_argument('--headless=new') # À ne PAS utiliser avec XVFB
+        # Options supplémentaires pour la stabilité / furtivité
+        options.add_argument('--start-maximized') # Peut aider avec XVFB si window-size ne suffit pas
+        options.add_argument('--disable-extensions') # Désactiver les extensions qui pourraient interférer
+        options.add_argument('--disable-popup-blocking') # Peut être utile pour certains sites
+        options.add_argument('--ignore-certificate-errors') # À utiliser avec prudence
+        options.add_argument('--lang=fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7') # Préférer le français
+        options.add_argument('--disable-blink-features=AutomationControlled') # uc le fait déjà, mais pour être sûr
+        options.add_argument(f"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/11{random.randint(0,9)}.0.0.0 Safari/537.36") # Randomiser un peu plus
+
         # Vérifie si ce chemin est correct sur ton système avec 'which chromium-browser'
-        chromium_path = "/usr/bin/chromium-browser"
+        # Essayez d'abord google-chrome si vous l'avez installé, sinon chromium-browser
+        chromium_path_chrome = "/usr/bin/google-chrome" 
+        chromium_path_chromium = "/usr/bin/chromium-browser"
+
         # Vérifier si le fichier existe avant de l'utiliser
-        if not Path(chromium_path).is_file():
-             print(f"ERREUR: Exécutable Chromium non trouvé à {chromium_path}. Vérifiez l'installation et le chemin.")
-             # Essayer sans chemin spécifique (peut fonctionner si dans le PATH)
-             try:
-                 print("Tentative de lancement de Chrome sans chemin spécifique...")
-                 driver = uc.Chrome(options=options)
-             except Exception as e_no_path:
-                 print(f"Échec du lancement sans chemin spécifique: {e_no_path}")
-                 return # Arrêter si le navigateur ne peut pas être lancé
+        if Path(chromium_path_chrome).is_file():
+            print(f"Utilisation de Google Chrome trouvé à {chromium_path_chrome}")
+            driver = uc.Chrome(browser_executable_path=chromium_path_chrome, options=options)
+        elif Path(chromium_path_chromium).is_file():
+            print(f"Utilisation de Chromium Browser trouvé à {chromium_path_chromium}")
+            driver = uc.Chrome(browser_executable_path=chromium_path_chromium, options=options)
         else:
-             driver = uc.Chrome(browser_executable_path=chromium_path, options=options)
+            print(f"ERREUR: Exécutable Chrome/Chromium non trouvé à {chromium_path_chrome} ou {chromium_path_chromium}. Tentative sans chemin spécifique.")
+            driver = uc.Chrome(options=options) # Laisse uc essayer de le trouver
 
         print("Navigateur Chrome furtif initialisé par main_scraper.")
 
@@ -709,6 +780,8 @@ def run_full_scraping_process(keywords_input_lists, google_pages_limit=5, google
 
                 except Exception as e_page_scraper_call:
                     print(f"  [Main] ERREUR lors de l'appel du page scraper pour {url_to_scrape} : {type(e_page_scraper_call).__name__} - {e_page_scraper_call}")
+                    if driver: # S'assurer que le driver existe
+                         save_debug_info(driver, f"PageScraper_{type(e_page_scraper_call).__name__}", url_to_scrape)
                     detailed_data = {
                         "URL_Originale_Source": url_to_scrape,
                         "Statut_Scraping_Detail": "Error Calling Page Scraper",
@@ -749,6 +822,8 @@ def run_full_scraping_process(keywords_input_lists, google_pages_limit=5, google
     except Exception as e:
         print(f"\nERREUR CRITIQUE GLOBALE dans main_scraper : {type(e).__name__} - {e}")
         traceback.print_exc()
+        if driver: # S'assurer que le driver existe
+            save_debug_info(driver, f"CRITICAL_{type(e).__name__}", "global_exception")
         # Important: Arrêter l'exécution ici si une erreur critique survient
         # Le finally s'exécutera quand même avant que la fonction ne retourne
         # --- Mettre à jour le statut en cas d'erreur critique ---

@@ -27,16 +27,25 @@ def go_to_google(driver):
     """Navigue vers la page d'accueil de Google et gère potentiellement le consentement."""
     if driver:
         try:
+            # Définir un page load timeout avant chaque driver.get() important
+            driver.set_page_load_timeout(45) # Augmenter si nécessaire, 45s est déjà beaucoup
             driver.get(GOOGLE_URL)
             WebDriverWait(driver, 20).until(
                 EC.presence_of_element_located((By.NAME, "q"))
             )
             # print(f"Connecté à {GOOGLE_URL}.") # Désactivé, le script principal affichera les logs globaux
             return True
-        except TimeoutException:
-             print("  [Google Search] Timeout lors de la connexion à Google.")
-             return False
-        except Exception as e:
+        except TimeoutException as te:
+            print(f"  [Google Search] Timeout lors de la connexion à Google ou attente barre recherche initiale: {te}")
+            try:
+                with open("google_error_page_source_go_to_google.html", "w", encoding="utf-8") as f:
+                    f.write(driver.page_source)
+                driver.save_screenshot("google_error_screenshot_go_to_google.png")
+                print("  [Google Search] Page source et screenshot sauvegardés (go_to_google).")
+            except Exception as e_save:
+                print(f"  [Google Search] Erreur lors de la sauvegarde de la page source/screenshot: {e_save}")
+            return False
+        except Exception as e: # Capturer WebDriverException aussi
             print(f"  [Google Search] Erreur lors de la connexion à Google : {e}")
             return False
     return False
@@ -45,6 +54,7 @@ def perform_search(driver, keyword):
     """Trouve la barre de recherche Google et effectue la recherche."""
     print(f"  [Google Search] Effectuer la recherche pour : '{keyword}'")
     consent_clicked = False
+    # Le premier bloc try-except semble être le principal, le second est une répétition. Je vais commenter le second.
     try:
         # --- Gestion du Consentement Google ---
         # Attendre un court instant pour voir si un bouton de consentement apparaît
@@ -57,12 +67,20 @@ def perform_search(driver, keyword):
         for selector in consent_buttons_selectors:
             try:
                 consent_button = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, selector)))
-                print(f"  [Google Search] Bouton de consentement trouvé ({selector}), clic...")
-                consent_button.click()
-                consent_clicked = True
-                time.sleep(random.uniform(1, 2)) # Pause après le clic
-                break # Sortir de la boucle si un bouton est cliqué
+                if consent_button.is_displayed() and consent_button.is_enabled():
+                    print(f"  [Google Search] Bouton de consentement trouvé ({selector}), clic...")
+                    # Essayer un clic JavaScript si le clic normal est intercepté
+                    try:
+                        consent_button.click()
+                    except ElementClickInterceptedException:
+                        print("  [Google Search] Clic normal intercepté, tentative avec JavaScript.")
+                        driver.execute_script("arguments[0].click();", consent_button)
+                    consent_clicked = True
+                    time.sleep(random.uniform(2, 3)) # Pause plus longue après le clic
+                    break # Sortir de la boucle si un bouton est cliqué
+                # else: print(f"  [Google Search] Bouton de consentement trouvé ({selector}) mais non visible/activé.") # Debug
             except TimeoutException:
+                # print(f"  [Google Search] Bouton de consentement non trouvé avec sélecteur: {selector}") # Debug
                 pass # Le bouton n'a pas été trouvé, essayer le suivant
         if not consent_clicked:
             print("  [Google Search] Aucun bouton de consentement évident trouvé ou déjà accepté.")
@@ -70,59 +88,65 @@ def perform_search(driver, keyword):
 
         # Revenir à Google peut être redondant si le consentement n'a pas redirigé, mais assure l'état
         # driver.get(GOOGLE_URL) # Commenté pour l'instant, voir si nécessaire après clic consentement
+        # Si on revient à Google, il faut à nouveau attendre la barre de recherche.
+        # Il est peut-être préférable de ne pas recharger et d'attendre la barre de recherche sur la page actuelle.
 
         # Attendre la barre de recherche après avoir potentiellement géré le consentement
-        search_box_home = WebDriverWait(driver, 15).until( # Augmenté le délai légèrement
-             EC.element_to_be_clickable((By.NAME, "q"))
+        # Utiliser element_to_be_clickable car cela vérifie aussi la visibilité et l'activation.
+        search_box_home = WebDriverWait(driver, 40).until( # Augmenté le délai à 40s
+             EC.element_to_be_clickable((By.NAME, "q")) # Le sélecteur NAME "q" est généralement fiable
         )
         search_box_home.clear()
         search_box_home.send_keys(keyword)
         time.sleep(random.uniform(0.5, 1.5))
         search_box_home.send_keys(Keys.RETURN)
 
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "search")))
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "search"))) # Attendre que les résultats apparaissent
         # print("  [Google Search] Recherche effectuée avec succès. Page de résultats chargée.") # Désactivé
         return True
-    except TimeoutException:
-        print(f"  [Google Search] Erreur (Timeout): Impossible de trouver la barre de recherche sur Google.com ou la page de résultats ne s'est pas chargée (après gestion consentement).")
-        return False
-    except WebDriverException as e:
-        print(f"  [Google Search] Erreur WebDriver lors de la recherche pour '{keyword}' : {e}")
-        # Optionnel: Sauvegarder le code source pour débogage
-        # try:
-        #     with open(f"google_error_search_webdriver.html", "w", encoding="utf-8") as f:
-        #         f.write(driver.page_source)
-        #     print("  [Google Search] Page source sauvegardée dans google_error_search_webdriver.html")
-        # except Exception as e_save:
-        #     print(f"  [Google Search] Erreur lors de la sauvegarde de la page source: {e_save}")
-        return False
-    except Exception as e:
-        print(f"  [Google Search] Erreur inattendue lors de la recherche pour '{keyword}' : {e}")
-        return False
-    try:
-        driver.get(GOOGLE_URL) # Revenir à Google pour chaque recherche
-        search_box_home = WebDriverWait(driver, 10).until(
-             EC.element_to_be_clickable((By.NAME, "q"))
-        )
-        search_box_home.clear()
-        search_box_home.send_keys(keyword)
-        time.sleep(random.uniform(0.5, 1.5))
-        search_box_home.send_keys(Keys.RETURN)
+    except TimeoutException as te:
+        current_url = "Non récupérable"
+        page_title = "Non récupérable"
+        try:
+            current_url = driver.current_url
+            page_title = driver.title
+            with open(f"google_error_perform_search_timeout.html", "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            driver.save_screenshot("google_error_perform_search_timeout.png")
+            print(f"  [Google Search] Page source et screenshot sauvegardés (perform_search timeout).")
+        except Exception as e_save:
+            print(f"  [Google Search] Erreur lors de la sauvegarde de la page source/screenshot: {e_save}")
 
-        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "search")))
-        # print("  [Google Search] Recherche effectuée avec succès. Page de résultats chargée.") # Désactivé
-        return True
-    except TimeoutException:
-        print(f"  [Google Search] Erreur (Timeout): Impossible de trouver la barre de recherche sur Google.com ou la page de résultats ne s'est pas chargée.")
-        # Optionnel: Sauvegarder le code source pour débogage
-        # with open(f"google_error_search_timeout.html", "w", encoding="utf-8") as f:
-        #     f.write(driver.page_source)
+        # Tentative de détection de CAPTCHA
+        captcha_detected = False
+        page_content_lower = ""
+        try:
+            # S'assurer que driver.page_source est appelé seulement si nécessaire et géré
+            if driver and hasattr(driver, 'page_source'):
+                page_content_lower = driver.page_source.lower()
+        except Exception:
+            pass # Impossible de récupérer la page source, on se basera sur l'URL
+
+        # Indicateurs de CAPTCHA plus robustes
+        captcha_indicators_url = ["ipv4.google.com/sorry", "consent.google.com"]
+        captcha_indicators_page = [
+            "recaptcha", "grecaptcha",
+            "nos systèmes ont détecté un trafic inhabituel",
+            "our systems have detected unusual traffic",
+            "pour continuer, veuillez saisir les caractères",
+            "to continue, please type the characters"
+        ]
+
+        if any(indicator in current_url.lower() for indicator in captcha_indicators_url) or \
+           (page_content_lower and any(indicator in page_content_lower for indicator in captcha_indicators_page)):
+            captcha_detected = True
+            print(f"  [Google Search] !!! CAPTCHA Google détecté sur {current_url} (Titre: {page_title}). Intervention manuelle ou réessai nécessaire. Abandon de cette recherche. !!!")
+        
+        print(f"  [Google Search] Erreur (Timeout) dans perform_search: {te}. Impossible de trouver la barre de recherche (CAPTCHA: {captcha_detected}). URL: {current_url}, Titre: {page_title}")
         return False
+
     except WebDriverException as e:
         print(f"  [Google Search] Erreur WebDriver lors de la recherche pour '{keyword}' : {e}")
-        # Optionnel: Sauvegarder le code source pour débogage
-        # with open(f"google_error_search_webdriver.html", "w", encoding="utf-8") as f:
-        #     f.write(driver.page_source)
         return False
     except Exception as e:
         print(f"  [Google Search] Erreur inattendue lors de la recherche pour '{keyword}' : {e}")
@@ -364,7 +388,7 @@ def scrape_google_search(driver, keyword_combinations, max_pages_per_search, goo
                             # Sélecteur plus robuste pour le lien "Suivant"
                             next_page_link_element = WebDriverWait(driver, 7).until(
                                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'a#pnnext, a[aria-label*="Suivant"], a[aria-label*="Next"]'))
-                            )
+                            ) # Note: Google change parfois ces sélecteurs. 'td.navend a' ou 'a[aria-label="Page suivante"]' sont d'autres options.
                             next_page_url = next_page_link_element.get_attribute('href')
 
                             if next_page_url:

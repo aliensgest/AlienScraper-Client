@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captures d'Écran de Débogage - AlienScraper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        .file-list { list-style: none; padding: 0; }
+        .file-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; background-color: rgba(255, 255, 255, 0.05); margin-bottom: 5px; border-radius: 3px;}
+        .file-item:last-child { border-bottom: none; }
+        .file-info span { margin-right: 15px; font-size: 0.9em; }
+        .file-actions a, .file-actions button { margin-left: 10px; text-decoration: none; }
+        .delete-button { background-color: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; }
+        .delete-button:hover { background-color: #c0392b; }
+        .container h1, .container h2 { text-align: left; }
+        .button-group { margin-bottom: 20px; padding: 10px; background-color: rgba(255,255,255,0.05); border-radius: 3px;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <p style="margin-bottom: 20px;"><a href="{{ url_for('home') }}" class="button"><i class="fas fa-arrow-left"></i> Retour à l'accueil</a></p>
+        <h1><i class="fas fa-camera-retro"></i> Fichiers de Débogage</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-messages">
+            {% for category, message in messages %}
+              <li class="flash-{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <div class="button-group">
+            {% if files %}
+            <form method="POST" action="{{ url_for('delete_all_screenshots') }}" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer TOUS les fichiers de débogage ?');">
+                <button type="submit" class="delete-button"><i class="fas fa-trash-alt"></i> Supprimer Tous les Fichiers</button>
+            </form>
+            {% endif %}
+        </div>
+
+        {% if files %}
+            <ul class="file-list">
+                {% for file in files %}
+                <li class="file-item">
+                    <div class="file-info">
+                        <i class="fas {{ 'fa-image' if file.name.endswith('.png') else 'fa-file-code' }}"></i>
+                        <strong>{{ file.name }}</strong><br>
+                        <span><i class="fas fa-weight-hanging"></i> {{ (file.size / 1024)|round(2) }} KB</span>
+                        <span><i class="fas fa-clock"></i> {{ file.modified }}</span>
+                    </div>
+                    <div class="file-actions">
+                        <a href="{{ url_for('download_screenshot', filename=file.name) }}" class="button" download><i class="fas fa-download"></i></a>
+                        <form method="POST" action="{{ url_for('delete_screenshot', filename=file.name) }}" style="display: inline;" onsubmit="return confirm('Supprimer {{ file.name }} ?');">
+                            <button type="submit" class="delete-button"><i class="fas fa-trash-alt"></i></button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p>Aucun fichier de débogage trouvé dans le dossier screenshots.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

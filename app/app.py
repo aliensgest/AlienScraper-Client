@@ -9,6 +9,7 @@ import os
 import shutil # Pour la suppression de dossiers
 import sys
 from pathlib import Path # Importer Path explicitement ici aussi
+import subprocess # Pour exécuter des commandes shell
 from werkzeug.utils import secure_filename # Pour sécuriser les noms de fichiers (même si on vérifie explicitement)
 
 # --- Setup sys.path ---
@@ -68,6 +69,16 @@ LEADS_FILE = config.LEADS_CSV_FINAL_PATH
 FB_COOKIES = config.BASE_DIR / "facebook_cookies.json"
 IG_COOKIES = config.BASE_DIR / "instagram_cookies.json"
 ALLOWED_COOKIE_FILENAMES = {'facebook_cookies.json', 'instagram_cookies.json'}
+# Définir SCREENSHOTS_DIR_APP pour l'application Flask
+if hasattr(config, 'BASE_DIR'):
+    SCREENSHOTS_DIR_APP = config.BASE_DIR / "screenshots"
+else: # Fallback si config.BASE_DIR n'est pas défini
+    # parent_dir est la racine du projet AlienScraper (/home/test/AlienScraper-Client)
+    SCREENSHOTS_DIR_APP = Path(parent_dir) / "screenshots"
+    print(f"AVERTISSEMENT: config.BASE_DIR non trouvé, SCREENSHOTS_DIR_APP défini à {SCREENSHOTS_DIR_APP}")
+
+# S'assurer que le dossier existe pour l'application
+SCREENSHOTS_DIR_APP.mkdir(parents=True, exist_ok=True)
 
 # Définit une route simple pour la page d'accueil
 @app.route('/')
@@ -216,6 +227,82 @@ def scrape_keywords():
     # Si méthode GET, afficher simplement le formulaire (redirection vers home)
     return redirect(url_for('home'))
 
+# --- Routes pour la gestion des screenshots ---
+@app.route('/screenshots')
+def list_screenshots():
+    if not SCREENSHOTS_DIR_APP.exists():
+        flash("Le dossier des captures d'écran n'a pas pu être trouvé ou créé.", "warning")
+        return render_template('screenshots.html', files=[])
+
+    try:
+        all_files = list(SCREENSHOTS_DIR_APP.glob('*.png')) + list(SCREENSHOTS_DIR_APP.glob('*.html'))
+        sorted_files = sorted(all_files, key=lambda f: f.stat().st_mtime, reverse=True)
+        
+        files_info = []
+        for f_path in sorted_files:
+            files_info.append({
+                'name': f_path.name,
+                'size': f_path.stat().st_size,
+                'modified': datetime.fromtimestamp(f_path.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            })
+        return render_template('screenshots.html', files=files_info)
+    except Exception as e:
+        flash(f"Erreur lors du listage des fichiers de débogage : {e}", "error")
+        return render_template('screenshots.html', files=[])
+
+@app.route('/screenshots/<path:filename>')
+def download_screenshot(filename):
+    # Sécurité: s'assurer que le fichier est bien dans SCREENSHOTS_DIR_APP
+    # et qu'il n'y a pas de tentative de path traversal.
+    safe_dir = SCREENSHOTS_DIR_APP.resolve()
+    file_path = (safe_dir / filename).resolve()
+    
+    if not file_path.is_file() or safe_dir not in file_path.parents:
+        abort(404, "Fichier non trouvé ou accès non autorisé.")
+    return send_from_directory(safe_dir, filename, as_attachment=True)
+
+@app.route('/delete_screenshot/<path:filename>', methods=['POST'])
+def delete_screenshot(filename):
+    safe_dir = SCREENSHOTS_DIR_APP.resolve()
+    file_path = (safe_dir / filename).resolve()
+
+    if not file_path.is_file() or safe_dir not in file_path.parents:
+        flash("Fichier non trouvé ou non autorisé.", "error")
+    else:
+        try:
+            file_path.unlink()
+            flash(f"Fichier {filename} supprimé.", "success")
+        except Exception as e:
+            flash(f"Erreur lors de la suppression de {filename}: {e}", "error")
+    return redirect(url_for('list_screenshots'))
+
+@app.route('/delete_all_screenshots', methods=['POST'])
+def delete_all_screenshots():
+    deleted_count = 0
+    error_count = 0
+    if not SCREENSHOTS_DIR_APP.exists():
+        flash("Dossier des screenshots non trouvé.", "error")
+        return redirect(url_for('list_screenshots'))
+        
+    for item in SCREENSHOTS_DIR_APP.glob('*'):
+        if item.is_file() and (item.name.endswith('.png') or item.name.endswith('.html')):
+            try:
+                item.unlink()
+                deleted_count += 1
+            except Exception:
+                error_count +=1
+    
+    if error_count > 0:
+        flash(f"{deleted_count} fichier(s) supprimé(s). {error_count} erreur(s) rencontrée(s).", "warning")
+    elif deleted_count > 0:
+        flash(f"Tous les {deleted_count} fichiers de débogage ont été supprimés.", "success")
+    else:
+        flash("Aucun fichier de débogage à supprimer.", "info")
+    return redirect(url_for('list_screenshots'))
+
+
+# --- Fin Routes Screenshots ---
+
 # Route pour obtenir le statut d'une tâche RQ
 @app.route('/job-status/<job_id>')
 def job_status(job_id):
@@ -360,6 +447,39 @@ def cancel_job(job_id):
             flash(f"Tâche {job_id} non trouvée.", "error")
     except Exception as e:
         flash(f"Erreur lors de l'annulation de la tâche {job_id}: {e}", "error")
+    return redirect(url_for('home'))
+
+# Route pour redémarrer les services
+@app.route('/restart_services', methods=['POST'])
+def restart_services():
+    # IMPORTANT: Nécessite une configuration sudoers pour l'utilisateur exécutant Flask.
+    # Ex: your_flask_user ALL=(ALL) NOPASSWD: /bin/systemctl restart alienscraper-app.service, /bin/systemctl restart alienscraper-worker.service
+    commands_to_run = [
+        {"cmd": ["sudo", "systemctl", "restart", "alienscraper-worker.service"], "name": "alienscraper-worker.service"},
+        {"cmd": ["sudo", "systemctl", "restart", "alienscraper-app.service"], "name": "alienscraper-app.service"} # App en dernier
+    ]
+    
+    all_successful = True
+    for item in commands_to_run:
+        service_name = item["name"]
+        command = item["cmd"]
+        try:
+            result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                flash(f"Service {service_name} redémarré avec succès.", "success")
+            else:
+                all_successful = False
+                error_details = result.stderr.strip() if result.stderr else "Aucun détail d'erreur."
+                flash(f"Échec du redémarrage de {service_name}. Code: {result.returncode}. Erreur: {error_details}", "error")
+        except subprocess.TimeoutExpired:
+            all_successful = False
+            flash(f"Timeout lors du redémarrage de {service_name}.", "error")
+        except Exception as e:
+            all_successful = False
+            flash(f"Erreur inattendue lors de la tentative de redémarrage de {service_name}: {str(e)}", "error")
+
+    # La redirection peut être affectée si alienscraper-app.service est redémarré.
+    # L'utilisateur pourrait avoir besoin de rafraîchir manuellement.
     return redirect(url_for('home'))
 
 # Route pour télécharger les fichiers CSV
