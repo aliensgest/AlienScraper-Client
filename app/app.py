@@ -10,6 +10,7 @@ import shutil # Pour la suppression de dossiers
 import sys
 from pathlib import Path # Importer Path explicitement ici aussi
 import subprocess # Pour exécuter des commandes shell
+from datetime import datetime # Importer datetime ici
 from werkzeug.utils import secure_filename # Pour sécuriser les noms de fichiers (même si on vérifie explicitement)
 
 # --- Setup sys.path ---
@@ -453,13 +454,15 @@ def cancel_job(job_id):
 @app.route('/restart_services', methods=['POST'])
 def restart_services():
     # IMPORTANT: Nécessite une configuration sudoers pour l'utilisateur exécutant Flask.
-    # Ex: your_flask_user ALL=(ALL) NOPASSWD: /bin/systemctl restart alienscraper-app.service, /bin/systemctl restart alienscraper-worker.service
     commands_to_run = [
-        {"cmd": ["sudo", "systemctl", "restart", "alienscraper-worker.service"], "name": "alienscraper-worker.service"},
-        {"cmd": ["sudo", "systemctl", "restart", "alienscraper-app.service"], "name": "alienscraper-app.service"} # App en dernier
+        {"cmd": ["sudo", "/bin/systemctl", "restart", "alienscraper-worker.service"], "name": "alienscraper-worker.service"},
+        {"cmd": ["sudo", "/bin/systemctl", "restart", "alienscraper-app.service"], "name": "alienscraper-app.service"} # App en dernier
     ]
     
     all_successful = True
+    messages = []
+    errors = []
+
     for item in commands_to_run:
         service_name = item["name"]
         command = item["cmd"]

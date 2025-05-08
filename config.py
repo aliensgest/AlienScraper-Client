@@ -1,7 +1,7 @@
 from pathlib import Path
 
 # --- Version ---
-APP_VERSION = "Beta 1.0"
+APP_VERSION = "2025 V2"
 # --- Chemins Principaux ---
 # Chemin de base du projet (le dossier où se trouve ce fichier config.py)
 # __file__ est le chemin de ce fichier config.py

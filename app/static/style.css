@@ -39,8 +39,57 @@ button:hover, input[type="submit"]:hover { background-color: #4cae4c; }
 .cookie-missing { color: red; }
 
 /* Section Fichiers */
-.file-list ul { list-style: none; padding: 0; }
-.file-list li { margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+/* .file-list ul { list-style: none; padding: 0; } */ /* Déjà géré par .file-group ul */
+/* .file-list li { margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; } */ /* Déjà géré par .file-item */
+
+/* Raffinement des items dans les sections d'état et de maintenance */
+.status-item, .cookie-item {
+    /* background-color: rgba(255, 255, 255, 0.2); */ /* Déjà dans .top-layout > section */
+    /* backdrop-filter: blur(5px); */ /* Déjà dans .top-layout > section */
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2); /* Bordure plus subtile */
+    display: flex;
+    flex-direction: column; /* Organise le label et les actions verticalement */
+    gap: 12px; /* Espace entre le label/statut et les actions */
+    background-color: rgba(0, 0, 0, 0.1); /* Fond légèrement plus sombre pour les items eux-mêmes */
+}
+
+.item-label {
+    display: flex;
+    justify-content: space-between; /* Aligne le titre à gauche et le statut à droite */
+    align-items: center;
+    flex-wrap: wrap; /* Permet au statut de passer en dessous sur petit écran */
+}
+
+.status-item strong, .cookie-item strong, .upload-form-item strong {
+    color: #f0f0f0; /* Texte principal des titres d'item plus clair */
+    font-size: 1.05em;
+}
+.status-item strong i, .cookie-item strong i, .upload-form-item strong i {
+    margin-right: 8px;
+    color: var(--primary-color); /* Couleur des icônes dans les titres */
+}
+
+.item-value span, .cookie-status {
+    color: #d8d8d8; /* Couleur du texte de statut */
+    font-size: 0.95em;
+}
+
+.cookie-actions {
+    align-self: flex-end; /* Aligne le bouton supprimer à droite */
+    margin-top: 5px; /* Petit espace si le statut est au-dessus */
+}
+
+.upload-form-item label strong { /* Style spécifique pour le label du formulaire d'upload */
+    display: block;
+    margin-bottom: 10px;
+}
+.form-help-text, .item-description {
+    color: #c0c0c0 !important; /* Texte d'aide/description plus doux, !important pour surcharger style inline */
+    line-height: 1.5;
+}
+
 .delete-button { background-color: #d9534f; font-size: 12px; padding: 5px 10px; margin-top: 0; }
 .delete-button:hover { background-color: #c9302c; }
 
@@ -50,8 +99,8 @@ button:hover, input[type="submit"]:hover { background-color: #4cae4c; }
 #progressStatus { margin-top: 5px; font-style: italic; color: #555; }
 
 /*section de pannaux*/
-.status-item, .cookie-item {background-color: rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(5px);}
+/* .status-item, .cookie-item {background-color: rgba(255, 255, 255, 0.2); */ /* Déplacé et ajusté ci-dessus */
+    /* backdrop-filter: blur(5px);} */ /* Déplacé */
 .p {color: #fffefedb;}
 
 /* Dans /home/AlienScraper/app/static/style.css (ajustements optionnels) */
@@ -132,29 +181,70 @@ button:hover, input[type="submit"]:hover { background-color: #4cae4c; }
     margin-right: 5px;
 }
 
-/* Amélioration de la barre de progression */
-progress {
-    border-radius: 5px;
-    border: none; /* Enlever la bordure par défaut */
-    background-color: #555; /* Fond de la barre */
+/* Styles pour l'accordéon */
+.accordion-header {
+    cursor: pointer;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    margin-bottom: 0; /* Le contenu de l'accordéon gérera l'espacement */
+    transition: background-color 0.3s ease;
 }
+.accordion-header:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+.accordion-icon { float: right; transition: transform 0.3s ease; }
+.accordion-header.active .accordion-icon { transform: rotate(180deg); }
+.accordion-content {
+    padding: 15px;
+    background-color: rgba(0,0,0,0.15); /* Fond légèrement différent et un peu plus sombre pour le contenu ouvert */
+    border-radius: 0 0 3px 3px; /* Arrondir seulement le bas */
+    display: none; /* Fermé par défaut */
+}
+
+.accordion-content.is-open {
+    display: block; /* Comportement par défaut pour la plupart des contenus d'accordéon ouverts */
+}
+
+/* Style spécifique pour le contenu de la section Maintenance lorsqu'il est ouvert */
+#maintenance-content.accordion-content.is-open {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+/* /home/test/AlienScraper-Client/static/style.css */
+
+/* ... (votre CSS existant) ... */
+
+/* Styles pour la barre de progression colorée */
+progress {
+    /* Style de base pour la barre */
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background-color: #444; /* Fond de la barre (partie non remplie) */
+    --progress-bar-color: #6c757d; /* Couleur par défaut (gris) */
+}
+
+/* Webkit (Chrome, Safari, Edge) */
 progress::-webkit-progress-bar {
-    background-color: #555;
-    border-radius: 5px;
+    background-color: #333; /* Couleur de fond de la "piste" */
+    border-radius: 3px;
 }
 progress::-webkit-progress-value {
-    background-color: var(--primary-color); /* Couleur de la progression */
-    border-radius: 5px;
-    transition: width 0.3s ease;
-}
-progress::-moz-progress-bar { /* Pour Firefox */
-    background-color: var(--primary-color);
-    border-radius: 5px;
-    transition: width 0.3s ease;
+    background-color: var(--progress-bar-color); /* Utilise la variable CSS */
+    border-radius: 3px;
+    transition: background-color 0.5s ease-in-out; /* Transition douce de couleur */
 }
 
-#progressStatus {
-    font-size: 0.95em;
-    color: #ddd;
+/* Mozilla Firefox */
+progress::-moz-progress-bar {
+    background-color: var(--progress-bar-color); /* Utilise la variable CSS */
+    border-radius: 3px;
+    transition: background-color 0.5s ease-in-out;
 }
 
+/* Microsoft Edge (ancien) & IE - Moins pertinent mais pour la complétude */
+progress {
+    color: var(--progress-bar-color); /* Pour IE */
+}

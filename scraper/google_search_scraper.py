@@ -11,10 +11,23 @@ from selenium.webdriver.support import expected_conditions as EC # Keep this
 from itertools import product
 import undetected_chromedriver as uc
 from urllib.parse import urlparse, parse_qs, unquote # Importer pour le parsing d'URL
-import sys # Importer pour sys.exit
+import sys # Importer pour sys.exit (non utilisé actuellement, mais gardé)
+from pathlib import Path # Pour la gestion des chemins
+from datetime import datetime # Pour l'horodatage des fichiers de débogage
+import re # Pour nettoyer les noms de fichiers
 
 # --- Configuration ---
 GOOGLE_URL = "https://www.google.com"
+
+# --- Configuration pour les screenshots de débogage (depuis config.py si possible) ---
+try:
+    from config import BASE_DIR as PROJECT_BASE_DIR # Importer BASE_DIR depuis config.py
+    SCREENSHOTS_DIR_GGL = PROJECT_BASE_DIR / "screenshots"
+    SCREENSHOTS_DIR_GGL.mkdir(parents=True, exist_ok=True)
+except ImportError:
+    print("  [Google Search] AVERTISSEMENT: config.py ou BASE_DIR non trouvé. Screenshots sauvegardés localement.")
+    SCREENSHOTS_DIR_GGL = Path(".") # Fallback au dossier courant
+
 # La limite de pages sera passée en paramètre depuis le script principal
 
 # --- Initialisation du Navigateur (Gérée par le script principal) ---
@@ -38,10 +51,14 @@ def go_to_google(driver):
         except TimeoutException as te:
             print(f"  [Google Search] Timeout lors de la connexion à Google ou attente barre recherche initiale: {te}")
             try:
-                with open("google_error_page_source_go_to_google.html", "w", encoding="utf-8") as f:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_context = "go_to_google"
+                html_path = SCREENSHOTS_DIR_GGL / f"{timestamp}_TimeoutException_{safe_context}.html"
+                png_path = SCREENSHOTS_DIR_GGL / f"{timestamp}_TimeoutException_{safe_context}.png"
+                with open(html_path, "w", encoding="utf-8") as f:
                     f.write(driver.page_source)
-                driver.save_screenshot("google_error_screenshot_go_to_google.png")
-                print("  [Google Search] Page source et screenshot sauvegardés (go_to_google).")
+                driver.save_screenshot(str(png_path))
+                print(f"  [Google Search] Page source et screenshot sauvegardés dans {SCREENSHOTS_DIR_GGL} (go_to_google).")
             except Exception as e_save:
                 print(f"  [Google Search] Erreur lors de la sauvegarde de la page source/screenshot: {e_save}")
             return False
@@ -110,10 +127,14 @@ def perform_search(driver, keyword):
         try:
             current_url = driver.current_url
             page_title = driver.title
-            with open(f"google_error_perform_search_timeout.html", "w", encoding="utf-8") as f:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_context = re.sub(r'[^\w\-_\. ]', '_', keyword)[:50] # Nettoyer le mot-clé pour le nom de fichier
+            html_path = SCREENSHOTS_DIR_GGL / f"{timestamp}_TimeoutException_perform_search_{safe_context}.html"
+            png_path = SCREENSHOTS_DIR_GGL / f"{timestamp}_TimeoutException_perform_search_{safe_context}.png"
+            with open(html_path, "w", encoding="utf-8") as f:
                 f.write(driver.page_source)
-            driver.save_screenshot("google_error_perform_search_timeout.png")
-            print(f"  [Google Search] Page source et screenshot sauvegardés (perform_search timeout).")
+            driver.save_screenshot(str(png_path))
+            print(f"  [Google Search] Page source et screenshot sauvegardés dans {SCREENSHOTS_DIR_GGL} (perform_search timeout).")
         except Exception as e_save:
             print(f"  [Google Search] Erreur lors de la sauvegarde de la page source/screenshot: {e_save}")
 
@@ -354,9 +375,12 @@ def scrape_google_search(driver, keyword_combinations, max_pages_per_search, goo
                     # On le fait ici pour être sûr d'avoir le HTML des résultats
                     if page_num == 1:
                         try:
-                            with open("google_results_page_1.html", "w", encoding="utf-8") as f:
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            safe_keyword = re.sub(r'[^\w\-_\. ]', '_', keyword_combination)[:50]
+                            html_path = SCREENSHOTS_DIR_GGL / f"{timestamp}_GoogleResultsP1_{safe_keyword}.html"
+                            with open(html_path, "w", encoding="utf-8") as f:
                                 f.write(driver.page_source)
-                            print("    [Google Search] Code HTML de la page 1 sauvegardé dans google_results_page_1.html")
+                            print(f"    [Google Search] Code HTML de la page 1 sauvegardé dans {html_path}")
                         except Exception as e_save_html:
                             print(f"    [Google Search] Erreur lors de la sauvegarde du HTML: {e_save_html}")
                     # --- Fin sauvegarde HTML ---
